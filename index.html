@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NIU XQi3 Quick Toggle</title>
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#ff6d00">
+    <style>
+        :root {
+            --bg-color: #0a0a0a;
+            --card-bg: #161616;
+            --accent: #ff6d00;
+            --accent-hover: #e65100;
+            --text-main: #f0f0f0;
+            --text-muted: #a0a0a0;
+            --border: #333333;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+        body { background-color: var(--bg-color); color: var(--text-main); padding: 20px; min-height: 100vh; display: flex; flex-direction: column; align-items: center; }
+        .container { width: 100%; max-width: 480px; }
+        header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid var(--border); padding-bottom: 16px; }
+        h1 { font-size: 1.4rem; color: var(--accent); }
+        .badge { font-size: 0.75rem; background: rgba(255,109,0,0.2); color: var(--accent); padding: 4px 8px; border-radius: 12px; border: 1px solid var(--accent); }
+        .card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; padding: 20px; margin-bottom: 16px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); }
+        h2 { font-size: 1.05rem; margin-bottom: 12px; color: var(--text-main); }
+        p { font-size: 0.85rem; color: var(--text-muted); margin-bottom: 12px; line-height: 1.4; }
+        button { width: 100%; border: none; padding: 16px; border-radius: 8px; font-weight: bold; font-size: 1.05rem; cursor: pointer; transition: transform 0.1s; margin-top: 8px; color: white; }
+        button:active { transform: scale(0.98); }
+        .unlock-btn { background: #2e7d32; }
+        .unlock-btn:hover { background: #1b5e20; }
+        .relock-btn { background: #c62828; }
+        .relock-btn:hover { background: #b71c1c; }
+        button.secondary { background: var(--accent); color: white; }
+        button.secondary:hover { background: var(--accent-hover); }
+        .status-box { background: #000; border-radius: 8px; padding: 12px; font-family: monospace; font-size: 0.8rem; color: #4caf50; border: 1px solid var(--border); min-height: 50px; max-height: 100px; overflow-y: auto; margin-top: 10px; }
+        .info-row { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 0.9rem; }
+        .label { color: var(--text-muted); }
+        .value { font-weight: bold; }
+        #installBanner { display: none; background: linear-gradient(135deg, #ff6d00, #e65100); color: white; padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; text-align: center; font-weight: bold; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div id="installBanner" onclick="installPWA()">📲 Installer l'application sur l'appareil</div>
+        
+        <header>
+            <h1>⚡ NIU Quick Toggle</h1>
+            <span class="badge">1-Tap Mode</span>
+        </header>
+
+        <div class="card">
+            <h2>1. Connexion Bluetooth</h2>
+            <p>Appairez votre moto une seule fois (ex: <strong>NIU link XXXX</strong>).</p>
+            <button class="secondary" onclick="connectBluetooth()">🔗 Connecter la moto</button>
+            <div class="info-row" style="margin-top: 12px;">
+                <span class="label">État :</span>
+                <span id="connectionStatus" class="value" style="color: #ff5252;">Déconnecté</span>
+            </div>
+            <div class="info-row">
+                <span class="label">Appareil :</span>
+                <span id="deviceName" class="value">-</span>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>2. Commandes rapides</h2>
+            <p>Appuyez directement pour appliquer le mode :</p>
+            <button class="unlock-btn" onclick="sendPayload('unlock')">🚀 DÉBRIDÉ (Pleine Puissance)</button>
+            <button class="relock-btn" onclick="sendPayload('relock')">🔒 BRIDÉ (Origine / Route)</button>
+        </div>
+
+        <div class="card">
+            <h2>Console</h2>
+            <div id="logBox" class="status-box">En attente de connexion...</div>
+        </div>
+    </div>
+
+    <script>
+        // ==========================================
+        // CODES INTÉGRÉS DEPUIS LA CAPTURE D'ÉCRAN
+        // ==========================================
+        const PAYLOADS = {
+            unlock: "6784855922124433616292282354227987263531",
+            relock: "6784855922124433616292282354227987273531"
+        };
+        // ==========================================
+
+        let bluetoothDevice = null;
+        let bluetoothServer = null;
+        let targetCharacteristic = null;
+        let deferredPrompt = null;
+
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            deferredPrompt = e;
+            document.getElementById('installBanner').style.display = 'block';
+        });
+
+        function installPWA() {
+            if (deferredPrompt) {
+                deferredPrompt.prompt();
+                deferredPrompt.userChoice.then((choiceResult) => {
+                    deferredPrompt = null;
+                    document.getElementById('installBanner').style.display = 'none';
+                });
+            }
+        }
+
+        function log(msg) {
+            const box = document.getElementById('logBox');
+            box.innerHTML += `> ${msg}<br>`;
+            box.scrollTop = box.scrollHeight;
+        }
+
+        async function connectBluetooth() {
+            if (!navigator.bluetooth) {
+                alert("Le Web Bluetooth n'est pas supporté par ce navigateur.");
+                return;
+            }
+            try {
+                log("Recherche de la moto...");
+                bluetoothDevice = await navigator.bluetooth.requestDevice({
+                    filters: [{ namePrefix: 'NIU link' }],
+                    optionalServices: []
+                });
+
+                document.getElementById('deviceName').innerText = bluetoothDevice.name;
+                log(`Appareil : ${bluetoothDevice.name}`);
+                bluetoothDevice.addEventListener('gattserverdisconnected', onDisconnected);
+
+                log("Connexion...");
+                bluetoothServer = await bluetoothDevice.gatt.connect();
+                document.getElementById('connectionStatus').innerText = "Connecté";
+                document.getElementById('connectionStatus').style.color = "#4caf50";
+                log("Connecté ! Recherche des canaux...");
+
+                const services = await bluetoothServer.getPrimaryServices();
+                for (const service of services) {
+                    const characteristics = await service.getCharacteristics();
+                    for (const char of characteristics) {
+                        if (char.properties.write || char.properties.writeWithoutResponse) {
+                            targetCharacteristic = char;
+                            log("Canal d'écriture prêt.");
+                            break;
+                        }
+                    }
+                    if (targetCharacteristic) break;
+                }
+
+                if (!targetCharacteristic) throw new Error("Canal d'écriture introuvable.");
+
+            } catch (error) {
+                log(`Erreur : ${error}`);
+                document.getElementById('connectionStatus').innerText = "Déconnecté";
+                document.getElementById('connectionStatus').style.color = "#ff5252";
+            }
+        }
+
+        function onDisconnected() {
+            log("Moto déconnectée.");
+            document.getElementById('connectionStatus').innerText = "Déconnecté";
+            document.getElementById('connectionStatus').style.color = "#ff5252";
+            targetCharacteristic = null;
+        }
+
+        async function sendPayload(type) {
+            if (!targetCharacteristic) {
+                alert("Veuillez d'abord connecter la moto via le bouton Bluetooth !");
+                return;
+            }
+            const codeText = PAYLOADS[type];
+
+            try {
+                log(`Envoi [${type.toUpperCase()}]...`);
+                const data = new TextEncoder().encode(codeText);
+                if (targetCharacteristic.properties.writeWithoutResponse) {
+                    await targetCharacteristic.writeValueWithoutResponse(data);
+                } else {
+                    await targetCharacteristic.writeValue(data);
+                }
+                log(`✅ Mode [${type.toUpperCase()}] appliqué avec succès !`);
+            } catch (error) {
+                log(`Erreur d'envoi : ${error}`);
+            }
+        }
+
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('sw.js');
+        }
+    </script>
+</body>
+</html>
