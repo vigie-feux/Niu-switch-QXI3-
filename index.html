@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>XQi3 Connect</title>
+    <meta name="theme-color" content="#0f172a">
+    <link rel="manifest" href="manifest.json">
+    <link rel="icon" type="image/svg+xml" href="icon.svg">
+    <link rel="apple-touch-icon" href="icon-192.png">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <div class="brand">
+                <div class="logo">XQi3</div>
+                <div>
+                    <h1>XQi3 Connect</h1>
+                    <p>NIU LINK C9F7 • BLE Direct</p>
+                </div>
+            </div>
+            <div id="status-badge" class="badge disconnected">Déconnecté</div>
+        </header>
+
+        <!-- Connexion -->
+        <section class="card">
+            <div class="card-header">
+                <h2>1. Connexion Moto</h2>
+                <label class="filter-switch">
+                    <input type="checkbox" id="use-filter" checked>
+                    <span>Filtre "NIU"</span>
+                </label>
+            </div>
+            <div id="device-display" class="device-box">
+                <span class="icon">🏍️</span>
+                <div class="info">
+                    <div id="dev-name" class="name">Prêt à scanner</div>
+                    <div id="dev-service" class="uuid">8ec94e30-f315-4f60-9fb8-838830daea52</div>
+                </div>
+            </div>
+            <div class="btn-group">
+                <button id="btn-connect" class="btn btn-primary">Scanner & Connecter</button>
+                <button id="btn-disconnect" class="btn btn-secondary" disabled>Déconnecter</button>
+            </div>
+        </section>
+
+        <!-- Actions : Débridage / Bridage -->
+        <section class="card">
+            <div class="card-header">
+                <h2>2. Commandes</h2>
+                <select id="format-select" class="format-select">
+                    <option value="hex">Mode: Byte Array (20 octets)</option>
+                    <option value="text">Mode: Texte UTF-8 (40 car.)</option>
+                </select>
+            </div>
+
+            <div class="actions">
+                <button id="btn-unlock" class="btn-action unlock" disabled>
+                    <span class="action-icon">🔓</span>
+                    <div class="action-text">
+                        <strong>DÉBRIDER (UNLOCK)</strong>
+                        <span>Pleine puissance Off-Road (> 30 mph)</span>
+                        <code>67848559...87263531</code>
+                    </div>
+                </button>
+
+                <button id="btn-lock" class="btn-action lock" disabled>
+                    <span class="action-icon">🔒</span>
+                    <div class="action-text">
+                        <strong>BRIDER (LOCK)</strong>
+                        <span>Vitesse d'origine (30 mph / 45 km/h)</span>
+                        <code>67848559...87273531</code>
+                    </div>
+                </button>
+            </div>
+        </section>
+
+        <!-- Console -->
+        <section class="card">
+            <div class="card-header">
+                <h2>Journal GATT (nRF Style)</h2>
+                <button id="btn-clear" class="btn-link">Effacer</button>
+            </div>
+            <div id="log-box" class="log-box"></div>
+        </section>
+    </div>
+    <script src="app.js"></script>
+</body>
+</html>
