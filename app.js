@@ -4,7 +4,24 @@ const XQI3_CONFIG = {
     SERVICE_UUID: '8ec94e30-f315-4f60-9fb8-838830daea52',
     CHAR_UUID: '8ec94e31-f315-4f60-9fb8-838830daea52',
     UNLOCK_HEX: '6784855922124433616292282354227987263531',
-    LOCK_HEX: '6784855922124433616292282354227987273531'
+    LOCK_HEX: '6784855922124433616292282354227987273531',
+    // Tous les services possibles pour éviter l'erreur "matching UUID"
+    ALL_POSSIBLE_SERVICES: [
+        '8ec94e30-f315-4f60-9fb8-838830daea52',
+        '5ec94e30-f015-49b0-9fb8-83885b8aea32',
+        '6e400001-b5a3-f393-e0a9-e50e24dcca9e',
+        '0000ffe0-0000-1000-8000-00805f9b34fb',
+        '0000fff0-0000-1000-8000-00805f9b34fb',
+        '0000ae00-0000-1000-8000-00805f9b34fb',
+        '0000ae30-0000-1000-8000-00805f9b34fb',
+        '0000fe00-0000-1000-8000-00805f9b34fb',
+        '0000fee0-0000-1000-8000-00805f9b34fb',
+        '0000fee7-0000-1000-8000-00805f9b34fb',
+        '0000ff00-0000-1000-8000-00805f9b34fb',
+        '00001800-0000-1000-8000-00805f9b34fb',
+        '00001801-0000-1000-8000-00805f9b34fb',
+        '0000180a-0000-1000-8000-00805f9b34fb'
+    ]
 };
 
 let bluetoothDevice = null;
@@ -71,7 +88,7 @@ async function scanAndConnect() {
     try {
         const usePrefixFilter = filterToggle.checked;
         const options = {
-            optionalServices: [XQI3_CONFIG.SERVICE_UUID]
+            optionalServices: XQI3_CONFIG.ALL_POSSIBLE_SERVICES
         };
 
         if (usePrefixFilter) {
@@ -91,34 +108,46 @@ async function scanAndConnect() {
         log('Connexion au serveur GATT...', 'info');
         const server = await bluetoothDevice.gatt.connect();
 
-        log(`Recherche du service ${XQI3_CONFIG.SERVICE_UUID}...`, 'info');
-        const service = await server.getPrimaryService(XQI3_CONFIG.SERVICE_UUID);
+        log('Inspection automatique de tous les services de la moto...', 'info');
+        const services = await server.getPrimaryServices();
+        log(`${services.length} service(s) trouvé(s) sur la moto.`, 'info');
 
-        log(`Recherche de la caractéristique ${XQI3_CONFIG.CHAR_UUID}...`, 'info');
-        try {
-            gattCharacteristic = await service.getCharacteristic(XQI3_CONFIG.CHAR_UUID);
-        } catch (e) {
-            log('Caractéristique exacte non trouvée, recherche automatique...', 'warn');
-            const chars = await service.getCharacteristics();
-            const writeChar = chars.find(c => c.properties.write || c.properties.writeWithoutResponse);
-            if (writeChar) {
-                gattCharacteristic = writeChar;
-            } else {
-                throw new Error('Aucune caractéristique inscriptible trouvée dans ce service.');
+        // Recherche intelligente : trouve le service spécifié ou le premier service inscriptible
+        let targetService = null;
+        for (const s of services) {
+            if (s.uuid.toLowerCase() === XQI3_CONFIG.SERVICE_UUID.toLowerCase()) {
+                targetService = s;
+                break;
             }
         }
 
-        deviceUuidEl.textContent = `Caractéristique prête : ${gattCharacteristic.uuid}`;
+        if (!targetService) {
+            targetService = services.find(s => !s.uuid.startsWith('00001800') && !s.uuid.startsWith('00001801')) || services[0];
+            log(`Service exact non trouvé, utilisation de : ${targetService.uuid}`, 'warn');
+        } else {
+            log(`Service cible trouvé : ${targetService.uuid}`, 'success');
+        }
+
+        log('Recherche de la caractéristique d\'écriture...', 'info');
+        const chars = await targetService.getCharacteristics();
+        
+        gattCharacteristic = chars.find(c => c.uuid.toLowerCase() === XQI3_CONFIG.CHAR_UUID.toLowerCase()) ||
+                             chars.find(c => c.properties.write || c.properties.writeWithoutResponse);
+
+        if (!gattCharacteristic) {
+            throw new Error('Aucune caractéristique d\'écriture n\'a été trouvée sur ce service.');
+        }
+
+        deviceUuidEl.textContent = `Caractéristique active : ${gattCharacteristic.uuid}`;
         updateUI(true, devName);
-        log('Connecté et prêt à envoyer les codes !', 'success');
+        log('Connecté et prêt à envoyer les commandes !', 'success');
 
     } catch (error) {
-        log(`Échec de connexion : ${error.message}`, 'error');
+        log(`❌ Échec de connexion : ${error.message}`, 'error');
         updateUI(false);
     }
 }
 
-// Écriture robuste avec basculement automatique writeValue / writeValueWithoutResponse
 async function sendCommand(hexCode, label) {
     if (!gattCharacteristic) {
         log('Erreur : Aucune caractéristique active.', 'error');
@@ -129,13 +158,11 @@ async function sendCommand(hexCode, label) {
         const payload = hexToBytes(hexCode);
         log(`Envoi [${label}] (${payload.byteLength} octets) : 0x${hexCode}`, 'warn');
 
-        // Essayer d'abord writeValueWithoutResponse si supporté, sinon writeValue (avec réponse)
         if (gattCharacteristic.properties.writeWithoutResponse) {
             await gattCharacteristic.writeValueWithoutResponse(payload);
         } else if (gattCharacteristic.properties.write) {
             await gattCharacteristic.writeValue(payload);
         } else {
-            // Forcer writeValue si les propriétés ne sont pas déclarées explicitement
             try {
                 await gattCharacteristic.writeValueWithoutResponse(payload);
             } catch (err) {
