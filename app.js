@@ -1,6 +1,5 @@
-// Configuration exacte extraite de la vidéo de Chris Ervin et de votre capture nRF Connect (NIU LINK C9F7)
+// Configuration BLE Universelle NIU XQi3 (Auto-Discovery sans échec d'UUID)
 const XQI3 = {
-    SERVICE_UUID: '8ec94e30-f315-4f60-9fb8-838830daea52',
     UNLOCK_CODE: '6784855922124433616292282354227987263531',
     LOCK_CODE:   '6784855922124433616292282354227987273531'
 };
@@ -29,7 +28,6 @@ function log(msg, type = 'info') {
     logBox.scrollTop = logBox.scrollHeight;
 }
 
-// Convertit la chaîne de 40 chiffres en tableau de 20 octets (Byte Array nRF Connect)
 function hexToBytes(hexStr) {
     const clean = hexStr.trim();
     const bytes = new Uint8Array(clean.length / 2);
@@ -52,7 +50,7 @@ function setConnectedUI(connected, name = 'Prêt à scanner') {
         statusBadge.className = 'badge disconnected';
         statusBadge.textContent = 'Déconnecté';
         devNameEl.textContent = name;
-        devServiceEl.textContent = XQI3.SERVICE_UUID;
+        devServiceEl.textContent = 'Auto-découverte active';
         btnConnect.disabled = false;
         btnDisconnect.disabled = true;
         btnUnlock.disabled = true;
@@ -62,32 +60,30 @@ function setConnectedUI(connected, name = 'Prêt à scanner') {
 
 async function connectBike() {
     if (!navigator.bluetooth) {
-        log('Web Bluetooth non disponible. Ouvrez cette page dans Chrome sur Android.', 'err');
+        log('Web Bluetooth non disponible. Utilisez Chrome sur Android.', 'err');
         alert('Utilisez Google Chrome sur Android pour le Bluetooth.');
         return;
     }
 
     try {
         writeChars = [];
-        // Déclaration obligatoire de votre UUID dans optionalServices avec uniquement des formats 128-bits valides
         const options = {
             optionalServices: [
-                XQI3.SERVICE_UUID,
+                '8ec94e30-f315-4f60-9fb8-838830daea52',
+                '5ec94e30-f015-49b0-9fb8-83885b8aea32',
                 '00001800-0000-1000-8000-00805f9b34fb',
-                '00001801-0000-1000-8000-00805f9b34fb'
+                '00001801-0000-1000-8000-00805f9b34fb',
+                '0000ffe0-0000-1000-8000-00805f9b34fb',
+                '0000fff0-0000-1000-8000-00805f9b34fb'
             ]
         };
 
         if (useFilter.checked) {
-            // Accepte à la fois "NIU LINK C9F7" (majuscules comme sur votre capture) et "NIU Link"
-            options.filters = [
-                { namePrefix: 'NIU' },
-                { services: [XQI3.SERVICE_UUID] }
-            ];
-            log('Recherche Bluetooth (Filtre NIU / Service XQi3)...', 'info');
+            options.filters = [{ namePrefix: 'NIU' }];
+            log('Recherche Bluetooth (Filtre NIU)...', 'info');
         } else {
             options.acceptAllDevices = true;
-            log('Recherche Bluetooth globale (Tous les appareils)...', 'info');
+            log('Recherche Bluetooth globale...', 'info');
         }
 
         bleDevice = await navigator.bluetooth.requestDevice(options);
@@ -103,32 +99,46 @@ async function connectBike() {
         log('Connexion au serveur GATT...', 'info');
         const server = await bleDevice.gatt.connect();
 
-        log(`Ouverture du service ${XQI3.SERVICE_UUID}...`, 'info');
-        const service = await server.getPrimaryService(XQI3.SERVICE_UUID);
+        log('Récupération de tous les services de la moto...', 'info');
+        const services = await server.getPrimaryServices();
+        log(`${services.length} service(s) trouvé(s) sur la moto.`, 'info');
 
-        log('Lecture des caractéristiques (Unknown Characteristic)...', 'info');
-        const chars = await service.getCharacteristics();
-
-        for (const c of chars) {
-            const p = c.properties;
-            log(`Trouvé : ${c.uuid} [write:${p.write}, noResp:${p.writeWithoutResponse}]`, 'info');
-            if (p.write || p.writeWithoutResponse) {
-                writeChars.push(c);
+        for (const service of services) {
+            if (service.uuid.startsWith('00001800') || service.uuid.startsWith('00001801')) continue;
+            log(`Examen du service : ${service.uuid}`, 'info');
+            try {
+                const chars = await service.getCharacteristics();
+                for (const c of chars) {
+                    log(` - Caractéristique : ${c.uuid} [write:${c.properties.write}, noResp:${p = c.properties.writeWithoutResponse}]`, 'info');
+                    if (c.properties.write || c.properties.writeWithoutResponse || c.properties.writeWithoutResponse === false) {
+                        writeChars.push(c);
+                    }
+                }
+            } catch (e) {
+                log(`Impossible de lire les caractéristiques de ${service.uuid}`, 'warn');
             }
         }
 
-        // Si aucune caractéristique ne déclare explicitement le flag mais qu'il y en a dans le service, on les garde toutes
-        if (writeChars.length === 0 && chars.length > 0) {
-            writeChars = chars;
+        if (writeChars.length === 0 && services.length > 0) {
+            for (const service of services) {
+                if (service.uuid.startsWith('00001800')) continue;
+                try {
+                    const chars = await service.getCharacteristics();
+                    if (chars.length > 0) {
+                        writeChars = chars;
+                        break;
+                    }
+                } catch(e){}
+            }
         }
 
         if (writeChars.length === 0) {
-            throw new Error('Aucune caractéristique trouvée dans Unknown Service.');
+            throw new Error('Aucune caractéristique d\'écriture trouvée sur la moto.');
         }
 
-        devServiceEl.textContent = `Caractéristique prête (${writeChars[0].uuid.slice(0, 8)}...)`;
+        devServiceEl.textContent = `Canal actif : ${writeChars[0].uuid.slice(0, 8)}...`;
         setConnectedUI(true, name);
-        log(`Connecté ! ${writeChars.length} caractéristique(s) prête(s). Cliquez sur Débrider ou Brider.`, 'ok');
+        log(`🎉 Connecté avec succès ! ${writeChars.length} canal(aux) prêt(s).`, 'ok');
 
     } catch (err) {
         log(`Erreur : ${err.message}`, 'err');
@@ -151,47 +161,26 @@ async function sendCode(codeStr, label) {
 
     for (const char of writeChars) {
         let written = false;
-
-        // Méthode 1 : writeValueWithoutResponse (rapide, pas d'attente d'ACK GATT)
-        if (!written && char.properties.writeWithoutResponse && char.writeValueWithoutResponse) {
+        try {
+            await char.writeValue(payload);
+            log(`✅ Envoyé (writeValue) sur ${char.uuid.slice(0, 8)}`, 'ok');
+            written = true;
+        } catch (e1) {
             try {
                 await char.writeValueWithoutResponse(payload);
                 log(`✅ Envoyé (WithoutResponse) sur ${char.uuid.slice(0, 8)}`, 'ok');
                 written = true;
-            } catch (e) {
-                log(`Repli méthode 2 sur ${char.uuid.slice(0, 8)}...`, 'info');
+            } catch (e2) {
+                log(`Échec sur ${char.uuid.slice(0, 8)} : ${e2.message}`, 'err');
             }
         }
-
-        // Méthode 2 : writeValueWithResponse
-        if (!written && char.writeValueWithResponse) {
-            try {
-                await char.writeValueWithResponse(payload);
-                log(`✅ Envoyé (WithResponse) sur ${char.uuid.slice(0, 8)}`, 'ok');
-                written = true;
-            } catch (e) {
-                log(`Repli méthode 3 sur ${char.uuid.slice(0, 8)}...`, 'info');
-            }
-        }
-
-        // Méthode 3 : writeValue standard
-        if (!written) {
-            try {
-                await char.writeValue(payload);
-                log(`✅ Envoyé (writeValue) sur ${char.uuid.slice(0, 8)}`, 'ok');
-                written = true;
-            } catch (e) {
-                log(`Échec sur ${char.uuid.slice(0, 8)} : ${e.message}`, 'err');
-            }
-        }
-
         if (written) successCount++;
     }
 
     if (successCount > 0) {
-        log(`🎉 Code [${label}] envoyé ! Comme indiqué dans la vidéo, il n'y a pas de bip de confirmation : testez la poignée sur béquille (> 30 mph en Sport).`, 'ok');
+        log(`🎉 Code [${label}] transmis ! Testez la poignée sur béquille (> 30 mph en Sport).`, 'ok');
     } else {
-        log(`❌ Échec d'écriture. Essayez de basculer le menu "Mode: Byte Array / Texte UTF-8" ou fermez nRF Connect en arrière-plan.`, 'err');
+        log(`❌ Échec de transmission.`, 'err');
     }
 }
 
