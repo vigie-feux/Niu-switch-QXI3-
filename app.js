@@ -1,4 +1,4 @@
-// Configuration BLE NIU XQi3 (Avec optionalServices obligatoire)
+// Configuration BLE NIU XQi3 (Correction format UUID 'fff0')
 const XQI3_CONFIG = {
     DEVICE_PREFIX: 'NIU Link',
     SERVICE_UUID: '8ec94e30-f315-4f60-9fb8-838830daea52',
@@ -71,15 +71,14 @@ async function scanAndConnect() {
     try {
         const usePrefixFilter = filterToggle.checked;
         
-        // OBLIGATOIRE : Chrome exige de déclarer l'UUID dans optionalServices 
-        // sinon l'accès aux services GATT est bloqué par sécurité ("Origin is not allowed to access any service").
+        // CORRECTION : Utilisation exclusive de formats UUID valides
         const options = {
             optionalServices: [
                 XQI3_CONFIG.SERVICE_UUID,
                 '5ec94e30-f015-49b0-9fb8-83885b8aea32',
                 '6e400001-b5a3-f393-e0a9-e50e24dcca9e',
                 '0000ffe0-0000-1000-8000-00805f9b34fb',
-                'fff0'
+                '0000fff0-0000-1000-8000-00805f9b34fb'
             ]
         };
 
