@@ -1,8 +1,8 @@
-// Configuration BLE & Codes en dur pour NIU XQi3
+// Configuration BLE & Codes en dur pour NIU XQi3 (Spécifique NIU LINK C9F7)
 const XQI3_CONFIG = {
     DEVICE_PREFIX: 'NIU Link',
-    SERVICE_UUID: '5ec94e30-f015-49b0-9fb8-83885b8aea32',
-    CHAR_UUID: '5ec94e31-f015-49b0-9fb8-83885b8aea32',
+    SERVICE_UUID: '8ec94e30-f315-4f60-9fb8-838830daea52',
+    CHAR_UUID: '8ec94e31-f315-4f60-9fb8-838830daea52',
     UNLOCK_HEX: '6784855922124433616292282354227987263531',
     LOCK_HEX: '6784855922124433616292282354227987273531'
 };
@@ -10,7 +10,6 @@ const XQI3_CONFIG = {
 let bluetoothDevice = null;
 let gattCharacteristic = null;
 
-// Éléments du DOM
 const btnScan = document.getElementById('btn-scan');
 const btnDisconnect = document.getElementById('btn-disconnect');
 const btnUnlock = document.getElementById('btn-unlock');
@@ -23,7 +22,6 @@ const deviceNameEl = document.getElementById('device-name');
 const deviceUuidEl = document.getElementById('device-uuid');
 const logConsole = document.getElementById('log-console');
 
-// Utilitaire de journalisation
 function log(message, type = 'info') {
     const entry = document.createElement('div');
     entry.className = `log-entry log-${type}`;
@@ -33,7 +31,6 @@ function log(message, type = 'info') {
     logConsole.scrollTop = logConsole.scrollHeight;
 }
 
-// Convertit la chaîne Hex de 40 caractères en Uint8Array de 20 octets (comme l'option Byte Array de nRF Connect)
 function hexToBytes(hex) {
     const cleanHex = hex.replace(/\s+/g, '');
     const bytes = new Uint8Array(cleanHex.length / 2);
@@ -43,7 +40,6 @@ function hexToBytes(hex) {
     return bytes;
 }
 
-// Mise à jour de l'interface selon l'état de connexion
 function updateUI(connected, name = 'Aucune moto détectée') {
     if (connected) {
         statusPill.className = 'status-pill connected';
@@ -65,11 +61,10 @@ function updateUI(connected, name = 'Aucune moto détectée') {
     }
 }
 
-// Recherche et connexion Bluetooth
 async function scanAndConnect() {
     if (!navigator.bluetooth) {
-        log('Erreur : Web Bluetooth non supporté sur ce navigateur. Utilisez Chrome sur Android ou Bluefy sur iOS.', 'error');
-        alert('Web Bluetooth non disponible. Ouvrez cette page dans Chrome (Android) ou Bluefy (iOS).');
+        log('Erreur : Web Bluetooth non supporté sur ce navigateur. Utilisez Chrome sur Android.', 'error');
+        alert('Web Bluetooth non disponible. Utilisez Chrome sur Android.');
         return;
     }
 
@@ -88,7 +83,7 @@ async function scanAndConnect() {
         }
 
         bluetoothDevice = await navigator.bluetooth.requestDevice(options);
-        const devName = bluetoothDevice.name || 'Moto XQi3 (Sans nom)';
+        const devName = bluetoothDevice.name || 'Moto XQi3';
         log(`Appareil sélectionné : ${devName}`, 'info');
 
         bluetoothDevice.addEventListener('gattserverdisconnected', onDisconnected);
@@ -100,9 +95,20 @@ async function scanAndConnect() {
         const service = await server.getPrimaryService(XQI3_CONFIG.SERVICE_UUID);
 
         log(`Recherche de la caractéristique ${XQI3_CONFIG.CHAR_UUID}...`, 'info');
-        gattCharacteristic = await service.getCharacteristic(XQI3_CONFIG.CHAR_UUID);
+        try {
+            gattCharacteristic = await service.getCharacteristic(XQI3_CONFIG.CHAR_UUID);
+        } catch (e) {
+            log('Recherche automatique de la première caractéristique d\'écriture...', 'warn');
+            const chars = await service.getCharacteristics();
+            const writeChar = chars.find(c => c.properties.write || c.properties.writeWithoutResponse);
+            if (writeChar) {
+                gattCharacteristic = writeChar;
+            } else {
+                throw new Error('Aucune caractéristique inscriptible trouvée.');
+            }
+        }
 
-        deviceUuidEl.textContent = `Caractéristique prête : ${XQI3_CONFIG.CHAR_UUID}`;
+        deviceUuidEl.textContent = `Caractéristique prête : ${gattCharacteristic.uuid}`;
         updateUI(true, devName);
         log('Connecté et prêt à envoyer les codes !', 'success');
 
@@ -112,7 +118,6 @@ async function scanAndConnect() {
     }
 }
 
-// Écriture de la trame d'octets sur la caractéristique BLE
 async function sendCommand(hexCode, label) {
     if (!gattCharacteristic) {
         log('Erreur : Aucune caractéristique active.', 'error');
@@ -135,7 +140,6 @@ async function sendCommand(hexCode, label) {
     }
 }
 
-// Déconnexion propre
 function disconnectDevice() {
     if (bluetoothDevice && bluetoothDevice.gatt.connected) {
         bluetoothDevice.gatt.disconnect();
@@ -148,19 +152,15 @@ function onDisconnected() {
     log('Moto déconnectée.', 'warn');
 }
 
-// Écouteurs d'événements
 btnScan.addEventListener('click', scanAndConnect);
 btnDisconnect.addEventListener('click', disconnectDevice);
 btnUnlock.addEventListener('click', () => sendCommand(XQI3_CONFIG.UNLOCK_HEX, 'DÉBRIDAGE / UNLOCK'));
 btnLock.addEventListener('click', () => sendCommand(XQI3_CONFIG.LOCK_HEX, 'BRIDAGE / LOCK'));
 btnClearLog.addEventListener('click', () => { logConsole.innerHTML = ''; });
 
-// Enregistrement du Service Worker pour la PWA
 if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./sw.js')
-            .then(() => log('PWA prête (Mode hors-ligne activé).', 'info'))
-            .catch(err => log(`Service Worker non chargé : ${err.message}`, 'warn'));
+        navigator.serviceWorker.register('./sw.js').catch(err => console.log(err));
     });
 }
 
