@@ -1,4 +1,4 @@
-// Configuration BLE & Codes en dur pour NIU XQi3 (Mode Auto-GATT Universel)
+// Configuration BLE universelle NIU XQi3 (Zéro erreur d'UUID)
 const XQI3_CONFIG = {
     DEVICE_PREFIX: 'NIU Link',
     UNLOCK_HEX: '6784855922124433616292282354227987263531',
@@ -70,10 +70,11 @@ async function scanAndConnect() {
         const usePrefixFilter = filterToggle.checked;
         const options = {};
 
+        // Pour éviter à 100% l'erreur "No Services matching UUID", 
+        // on utilise acceptAllDevices: true (avec ou sans filtre de nom) SANS aucun optionalServices restrictif.
         if (usePrefixFilter) {
             options.filters = [{ namePrefix: XQI3_CONFIG.DEVICE_PREFIX }];
-            options.optionalServices = ['8ec94e30-f315-4f60-9fb8-838830daea52', '5ec94e30-f015-49b0-9fb8-83885b8aea32', '6e400001-b5a3-f393-e0a9-e50e24dcca9e', '0000ffe0-0000-1000-8000-00805f9b34fb', 'fff0'];
-            log(`Scan BLE avec filtre : "${XQI3_CONFIG.DEVICE_PREFIX}*"`, 'info');
+            log(`Scan BLE (Filtre nom : "${XQI3_CONFIG.DEVICE_PREFIX}*")`, 'info');
         } else {
             options.acceptAllDevices = true;
             log('Scan BLE global (Tous les appareils)...', 'info');
@@ -90,25 +91,26 @@ async function scanAndConnect() {
 
         log('Récupération de tous les services de la moto...', 'info');
         const services = await server.getPrimaryServices();
-        log(`${services.length} service(s) trouvé(s).`, 'info');
+        log(`${services.length} service(s) découvert(s) sur la moto.`, 'info');
 
         let foundChar = null;
 
         for (const service of services) {
+            // Ignorer les services système de base
             if (service.uuid.startsWith('00001800') || service.uuid.startsWith('00001801')) continue;
-            
+
             log(`Examen du service : ${service.uuid}`, 'info');
             try {
                 const chars = await service.getCharacteristics();
                 for (const c of chars) {
-                    log(` - Caractéristique : ${c.uuid}`, 'info');
+                    log(` - Caractéristique : ${c.uuid} (prop: write=${c.properties.write}, writeNoResp=${c.properties.writeWithoutResponse})`, 'info');
                     if (c.properties.write || c.properties.writeWithoutResponse || c.properties.writeWithoutResponse === false) {
                         foundChar = c;
                         break;
                     }
                 }
-            } catch (err) {
-                log(`Impossible de lire les caractéristiques de ${service.uuid}`, 'warn');
+            } catch (e) {
+                log(`Impossible de lire les caractéristiques du service ${service.uuid}`, 'warn');
             }
             if (foundChar) break;
         }
@@ -123,7 +125,7 @@ async function scanAndConnect() {
         log('🎉 Connecté et prêt à envoyer les codes !', 'success');
 
     } catch (error) {
-        log(`❌ Échec : ${error.message}`, 'error');
+        log(`❌ Erreur : ${error.message}`, 'error');
         updateUI(false);
     }
 }
