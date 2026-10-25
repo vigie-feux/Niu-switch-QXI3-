@@ -1,6 +1,8 @@
-// Configuration BLE universelle NIU XQi3 (Zéro erreur d'UUID)
+// Configuration BLE NIU XQi3 (Avec optionalServices obligatoire)
 const XQI3_CONFIG = {
     DEVICE_PREFIX: 'NIU Link',
+    SERVICE_UUID: '8ec94e30-f315-4f60-9fb8-838830daea52',
+    CHAR_UUID: '8ec94e31-f315-4f60-9fb8-838830daea52',
     UNLOCK_HEX: '6784855922124433616292282354227987263531',
     LOCK_HEX: '6784855922124433616292282354227987273531'
 };
@@ -51,7 +53,7 @@ function updateUI(connected, name = 'Aucune moto détectée') {
         statusPill.className = 'status-pill disconnected';
         statusText.textContent = 'Déconnecté';
         deviceNameEl.textContent = name;
-        deviceUuidEl.textContent = 'Prêt pour le scan';
+        deviceUuidEl.textContent = `Service: ${XQI3_CONFIG.SERVICE_UUID}`;
         btnScan.disabled = false;
         btnDisconnect.disabled = true;
         btnUnlock.disabled = true;
@@ -68,13 +70,22 @@ async function scanAndConnect() {
 
     try {
         const usePrefixFilter = filterToggle.checked;
-        const options = {};
+        
+        // OBLIGATOIRE : Chrome exige de déclarer l'UUID dans optionalServices 
+        // sinon l'accès aux services GATT est bloqué par sécurité ("Origin is not allowed to access any service").
+        const options = {
+            optionalServices: [
+                XQI3_CONFIG.SERVICE_UUID,
+                '5ec94e30-f015-49b0-9fb8-83885b8aea32',
+                '6e400001-b5a3-f393-e0a9-e50e24dcca9e',
+                '0000ffe0-0000-1000-8000-00805f9b34fb',
+                'fff0'
+            ]
+        };
 
-        // Pour éviter à 100% l'erreur "No Services matching UUID", 
-        // on utilise acceptAllDevices: true (avec ou sans filtre de nom) SANS aucun optionalServices restrictif.
         if (usePrefixFilter) {
             options.filters = [{ namePrefix: XQI3_CONFIG.DEVICE_PREFIX }];
-            log(`Scan BLE (Filtre nom : "${XQI3_CONFIG.DEVICE_PREFIX}*")`, 'info');
+            log(`Scan BLE (Filtre : "${XQI3_CONFIG.DEVICE_PREFIX}*")...`, 'info');
         } else {
             options.acceptAllDevices = true;
             log('Scan BLE global (Tous les appareils)...', 'info');
@@ -89,43 +100,27 @@ async function scanAndConnect() {
         log('Connexion au serveur GATT...', 'info');
         const server = await bluetoothDevice.gatt.connect();
 
-        log('Récupération de tous les services de la moto...', 'info');
-        const services = await server.getPrimaryServices();
-        log(`${services.length} service(s) découvert(s) sur la moto.`, 'info');
+        log(`Accès au service principal ${XQI3_CONFIG.SERVICE_UUID}...`, 'info');
+        const service = await server.getPrimaryService(XQI3_CONFIG.SERVICE_UUID);
 
-        let foundChar = null;
-
-        for (const service of services) {
-            // Ignorer les services système de base
-            if (service.uuid.startsWith('00001800') || service.uuid.startsWith('00001801')) continue;
-
-            log(`Examen du service : ${service.uuid}`, 'info');
-            try {
-                const chars = await service.getCharacteristics();
-                for (const c of chars) {
-                    log(` - Caractéristique : ${c.uuid} (prop: write=${c.properties.write}, writeNoResp=${c.properties.writeWithoutResponse})`, 'info');
-                    if (c.properties.write || c.properties.writeWithoutResponse || c.properties.writeWithoutResponse === false) {
-                        foundChar = c;
-                        break;
-                    }
-                }
-            } catch (e) {
-                log(`Impossible de lire les caractéristiques du service ${service.uuid}`, 'warn');
+        log(`Recherche de la caractéristique ${XQI3_CONFIG.CHAR_UUID}...`, 'info');
+        try {
+            gattCharacteristic = await service.getCharacteristic(XQI3_CONFIG.CHAR_UUID);
+        } catch (e) {
+            log('Recherche automatique de la première caractéristique d\'écriture...', 'warn');
+            const chars = await service.getCharacteristics();
+            gattCharacteristic = chars.find(c => c.properties.write || c.properties.writeWithoutResponse);
+            if (!gattCharacteristic) {
+                throw new Error('Aucune caractéristique inscriptible trouvée.');
             }
-            if (foundChar) break;
         }
 
-        if (!foundChar) {
-            throw new Error('Aucune caractéristique d\'écriture n\'a été trouvée sur cet appareil.');
-        }
-
-        gattCharacteristic = foundChar;
-        deviceUuidEl.textContent = `Canal actif : ${gattCharacteristic.uuid}`;
+        deviceUuidEl.textContent = `Caractéristique : ${gattCharacteristic.uuid}`;
         updateUI(true, devName);
         log('🎉 Connecté et prêt à envoyer les codes !', 'success');
 
     } catch (error) {
-        log(`❌ Erreur : ${error.message}`, 'error');
+        log(`❌ Échec : ${error.message}`, 'error');
         updateUI(false);
     }
 }
