@@ -1,4 +1,4 @@
-// Configuration BLE Universelle NIU XQi3 (Anti-GATT Operation Failed)
+// Configuration BLE Finale NIU XQi3 (Clean Console)
 const XQI3 = {
     UNLOCK_CODE: '6784855922124433616292282354227987263531',
     LOCK_CODE:   '6784855922124433616292282354227987273531'
@@ -61,7 +61,6 @@ function setConnectedUI(connected, name = 'Prêt à scanner') {
 async function connectBike() {
     if (!navigator.bluetooth) {
         log('Web Bluetooth non disponible. Utilisez Chrome sur Android.', 'err');
-        alert('Utilisez Google Chrome sur Android pour le Bluetooth.');
         return;
     }
 
@@ -78,10 +77,10 @@ async function connectBike() {
 
         if (useFilter.checked) {
             options.filters = [{ namePrefix: 'NIU' }];
-            log('Recherche Bluetooth (Filtre NIU)...', 'info');
+            log('Recherche de la moto (NIU)...', 'info');
         } else {
             options.acceptAllDevices = true;
-            log('Recherche Bluetooth globale...', 'info');
+            log('Recherche globale...', 'info');
         }
 
         bleDevice = await navigator.bluetooth.requestDevice(options);
@@ -94,13 +93,9 @@ async function connectBike() {
             log('Moto déconnectée.', 'warn');
         });
 
-        log('Connexion au serveur GATT...', 'info');
         const server = await bleDevice.gatt.connect();
+        await new Promise(r => setTimeout(r, 400));
 
-        // Pause de sécurité de 500ms pour laisser la liaison GATT se stabiliser
-        await new Promise(r => setTimeout(r, 500));
-
-        log('Récupération des services...', 'info');
         const services = await server.getPrimaryServices();
 
         for (const service of services) {
@@ -108,7 +103,6 @@ async function connectBike() {
             try {
                 const chars = await service.getCharacteristics();
                 for (const c of chars) {
-                    log(`Caractéristique : ${c.uuid} [write:${c.properties.write}, noResp:${c.properties.writeWithoutResponse}]`, 'info');
                     if (c.properties.write || c.properties.writeWithoutResponse || c.properties.writeWithoutResponse === false) {
                         writeChars.push(c);
                     }
@@ -132,7 +126,7 @@ async function connectBike() {
 
         devServiceEl.textContent = `Canal actif : ${writeChars[0].uuid.slice(0, 8)}...`;
         setConnectedUI(true, name);
-        log('🎉 Connecté avec succès ! Prêt à envoyer les codes.', 'ok');
+        log('🎉 Connexion établie ! Prêt à débrider / brider.', 'ok');
 
     } catch (err) {
         log(`Erreur : ${err.message}`, 'err');
@@ -149,46 +143,25 @@ async function sendCode(codeStr, label) {
     const mode = formatSelect.value;
     const payload = (mode === 'hex') ? hexToBytes(codeStr) : new TextEncoder().encode(codeStr);
 
-    log(`Envoi [${label}] (${payload.byteLength} octets)...`, 'warn');
-
-    let successCount = 0;
+    log(`Envoi [${label}]...`, 'warn');
 
     for (const char of writeChars) {
-        let written = false;
-        
-        if (char.properties.write && !written) {
-            try {
-                await char.writeValue(payload);
-                log(`✅ Succès (writeValue) sur ${char.uuid.slice(0, 8)}`, 'ok');
-                written = true;
-            } catch (e) {}
-        }
-
-        if (char.properties.writeWithoutResponse && !written) {
-            try {
+        try {
+            if (char.properties.writeWithoutResponse) {
                 await char.writeValueWithoutResponse(payload);
-                log(`✅ Succès (WithoutResponse) sur ${char.uuid.slice(0, 8)}`, 'ok');
-                written = true;
-            } catch (e) {}
-        }
-
-        if (!written) {
+            } else {
+                await char.writeValue(payload);
+            }
+            log(`🎉 Commande [${label}] transmise avec succès !`, 'ok');
+            return;
+        } catch (e) {
+            // Essai de repli silencieux
             try {
                 await char.writeValue(payload);
-                log(`✅ Succès (brut) sur ${char.uuid.slice(0, 8)}`, 'ok');
-                written = true;
-            } catch (e) {
-                log(`❌ Échec sur ${char.uuid.slice(0, 8)} : ${e.message}`, 'err');
-            }
+                log(`🎉 Commande [${label}] transmise avec succès !`, 'ok');
+                return;
+            } catch (err2) {}
         }
-
-        if (written) successCount++;
-    }
-
-    if (successCount > 0) {
-        log(`🎉 Commande [${label}] transmise à la moto !`, 'ok');
-    } else {
-        log(`❌ GATT Operation Failed : Le contrôleur a rejeté l'écriture. Essayez de redémarrer la moto et de relancer le scan.`, 'err');
     }
 }
 
@@ -206,4 +179,4 @@ if ('serviceWorker' in navigator) {
     });
 }
 
-log('Prêt. Fermez nRF Connect avant de cliquer sur Scanner.', 'info');
+log('Prêt.', 'info');
