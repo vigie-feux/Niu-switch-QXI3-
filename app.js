@@ -5,7 +5,6 @@ const XQI3_CONFIG = {
     CHAR_UUID: '8ec94e31-f315-4f60-9fb8-838830daea52',
     UNLOCK_HEX: '6784855922124433616292282354227987263531',
     LOCK_HEX: '6784855922124433616292282354227987273531',
-    // Tous les services possibles pour éviter l'erreur "matching UUID"
     ALL_POSSIBLE_SERVICES: [
         '8ec94e30-f315-4f60-9fb8-838830daea52',
         '5ec94e30-f015-49b0-9fb8-83885b8aea32',
@@ -108,11 +107,9 @@ async function scanAndConnect() {
         log('Connexion au serveur GATT...', 'info');
         const server = await bluetoothDevice.gatt.connect();
 
-        log('Inspection automatique de tous les services de la moto...', 'info');
+        log('Inspection des services...', 'info');
         const services = await server.getPrimaryServices();
-        log(`${services.length} service(s) trouvé(s) sur la moto.`, 'info');
 
-        // Recherche intelligente : trouve le service spécifié ou le premier service inscriptible
         let targetService = null;
         for (const s of services) {
             if (s.uuid.toLowerCase() === XQI3_CONFIG.SERVICE_UUID.toLowerCase()) {
@@ -123,7 +120,7 @@ async function scanAndConnect() {
 
         if (!targetService) {
             targetService = services.find(s => !s.uuid.startsWith('00001800') && !s.uuid.startsWith('00001801')) || services[0];
-            log(`Service exact non trouvé, utilisation de : ${targetService.uuid}`, 'warn');
+            log(`Service cible de repli : ${targetService.uuid}`, 'warn');
         } else {
             log(`Service cible trouvé : ${targetService.uuid}`, 'success');
         }
@@ -135,12 +132,12 @@ async function scanAndConnect() {
                              chars.find(c => c.properties.write || c.properties.writeWithoutResponse);
 
         if (!gattCharacteristic) {
-            throw new Error('Aucune caractéristique d\'écriture n\'a été trouvée sur ce service.');
+            throw new Error('Aucune caractéristique inscriptible trouvée.');
         }
 
-        deviceUuidEl.textContent = `Caractéristique active : ${gattCharacteristic.uuid}`;
+        deviceUuidEl.textContent = `Caractéristique : ${gattCharacteristic.uuid}`;
         updateUI(true, devName);
-        log('Connecté et prêt à envoyer les commandes !', 'success');
+        log('Connecté et prêt !', 'success');
 
     } catch (error) {
         log(`❌ Échec de connexion : ${error.message}`, 'error');
@@ -148,6 +145,7 @@ async function scanAndConnect() {
     }
 }
 
+// Envoi ultra-robuste contournant "GATT Operation Failed"
 async function sendCommand(hexCode, label) {
     if (!gattCharacteristic) {
         log('Erreur : Aucune caractéristique active.', 'error');
@@ -158,21 +156,24 @@ async function sendCommand(hexCode, label) {
         const payload = hexToBytes(hexCode);
         log(`Envoi [${label}] (${payload.byteLength} octets) : 0x${hexCode}`, 'warn');
 
-        if (gattCharacteristic.properties.writeWithoutResponse) {
-            await gattCharacteristic.writeValueWithoutResponse(payload);
-        } else if (gattCharacteristic.properties.write) {
-            await gattCharacteristic.writeValue(payload);
-        } else {
+        const CHUNK_SIZE = 20;
+        for (let i = 0; i < payload.length; i += CHUNK_SIZE) {
+            const chunk = payload.slice(i, i + CHUNK_SIZE);
+            
             try {
-                await gattCharacteristic.writeValueWithoutResponse(payload);
-            } catch (err) {
-                await gattCharacteristic.writeValue(payload);
+                await gattCharacteristic.writeValue(chunk);
+            } catch (err1) {
+                await gattCharacteristic.writeValueWithoutResponse(chunk);
+            }
+            if (payload.length > CHUNK_SIZE) {
+                await new Promise(r => setTimeout(r, 40));
             }
         }
 
         log(`🎉 Trame [${label}] transmise avec succès ! Vérifiez la vitesse sur la moto.`, 'success');
     } catch (error) {
-        log(`❌ Erreur d'envoi [${label}] : ${error.message}`, 'error');
+        log(`❌ GATT Erreur [${label}] : ${error.message}`, 'error');
+        log(`💡 Conseil : Déconnectez et reconnectez la moto si le contrôleur s'est mis en sécurité.`, 'warn');
     }
 }
 
