@@ -1,4 +1,4 @@
-// Configuration BLE Universelle NIU XQi3 (Auto-Discovery sans échec d'UUID)
+// Configuration BLE Universelle NIU XQi3 (Anti-GATT Operation Failed)
 const XQI3 = {
     UNLOCK_CODE: '6784855922124433616292282354227987263531',
     LOCK_CODE:   '6784855922124433616292282354227987273531'
@@ -50,7 +50,7 @@ function setConnectedUI(connected, name = 'Prêt à scanner') {
         statusBadge.className = 'badge disconnected';
         statusBadge.textContent = 'Déconnecté';
         devNameEl.textContent = name;
-        devServiceEl.textContent = 'Auto-découverte active';
+        devServiceEl.textContent = 'Prêt';
         btnConnect.disabled = false;
         btnDisconnect.disabled = true;
         btnUnlock.disabled = true;
@@ -72,9 +72,7 @@ async function connectBike() {
                 '8ec94e30-f315-4f60-9fb8-838830daea52',
                 '5ec94e30-f015-49b0-9fb8-83885b8aea32',
                 '00001800-0000-1000-8000-00805f9b34fb',
-                '00001801-0000-1000-8000-00805f9b34fb',
-                '0000ffe0-0000-1000-8000-00805f9b34fb',
-                '0000fff0-0000-1000-8000-00805f9b34fb'
+                '00001801-0000-1000-8000-00805f9b34fb'
             ]
         };
 
@@ -99,24 +97,23 @@ async function connectBike() {
         log('Connexion au serveur GATT...', 'info');
         const server = await bleDevice.gatt.connect();
 
-        log('Récupération de tous les services de la moto...', 'info');
+        // Pause de sécurité de 500ms pour laisser la liaison GATT se stabiliser
+        await new Promise(r => setTimeout(r, 500));
+
+        log('Récupération des services...', 'info');
         const services = await server.getPrimaryServices();
-        log(`${services.length} service(s) trouvé(s) sur la moto.`, 'info');
 
         for (const service of services) {
             if (service.uuid.startsWith('00001800') || service.uuid.startsWith('00001801')) continue;
-            log(`Examen du service : ${service.uuid}`, 'info');
             try {
                 const chars = await service.getCharacteristics();
                 for (const c of chars) {
-                    log(` - Caractéristique : ${c.uuid} [write:${c.properties.write}, noResp:${p = c.properties.writeWithoutResponse}]`, 'info');
+                    log(`Caractéristique : ${c.uuid} [write:${c.properties.write}, noResp:${c.properties.writeWithoutResponse}]`, 'info');
                     if (c.properties.write || c.properties.writeWithoutResponse || c.properties.writeWithoutResponse === false) {
                         writeChars.push(c);
                     }
                 }
-            } catch (e) {
-                log(`Impossible de lire les caractéristiques de ${service.uuid}`, 'warn');
-            }
+            } catch (e) {}
         }
 
         if (writeChars.length === 0 && services.length > 0) {
@@ -124,21 +121,18 @@ async function connectBike() {
                 if (service.uuid.startsWith('00001800')) continue;
                 try {
                     const chars = await service.getCharacteristics();
-                    if (chars.length > 0) {
-                        writeChars = chars;
-                        break;
-                    }
+                    if (chars.length > 0) { writeChars = chars; break; }
                 } catch(e){}
             }
         }
 
         if (writeChars.length === 0) {
-            throw new Error('Aucune caractéristique d\'écriture trouvée sur la moto.');
+            throw new Error('Aucune caractéristique inscriptible trouvée.');
         }
 
         devServiceEl.textContent = `Canal actif : ${writeChars[0].uuid.slice(0, 8)}...`;
         setConnectedUI(true, name);
-        log(`🎉 Connecté avec succès ! ${writeChars.length} canal(aux) prêt(s).`, 'ok');
+        log('🎉 Connecté avec succès ! Prêt à envoyer les codes.', 'ok');
 
     } catch (err) {
         log(`Erreur : ${err.message}`, 'err');
@@ -161,34 +155,46 @@ async function sendCode(codeStr, label) {
 
     for (const char of writeChars) {
         let written = false;
-        try {
-            await char.writeValue(payload);
-            log(`✅ Envoyé (writeValue) sur ${char.uuid.slice(0, 8)}`, 'ok');
-            written = true;
-        } catch (e1) {
+        
+        if (char.properties.write && !written) {
+            try {
+                await char.writeValue(payload);
+                log(`✅ Succès (writeValue) sur ${char.uuid.slice(0, 8)}`, 'ok');
+                written = true;
+            } catch (e) {}
+        }
+
+        if (char.properties.writeWithoutResponse && !written) {
             try {
                 await char.writeValueWithoutResponse(payload);
-                log(`✅ Envoyé (WithoutResponse) sur ${char.uuid.slice(0, 8)}`, 'ok');
+                log(`✅ Succès (WithoutResponse) sur ${char.uuid.slice(0, 8)}`, 'ok');
                 written = true;
-            } catch (e2) {
-                log(`Échec sur ${char.uuid.slice(0, 8)} : ${e2.message}`, 'err');
+            } catch (e) {}
+        }
+
+        if (!written) {
+            try {
+                await char.writeValue(payload);
+                log(`✅ Succès (brut) sur ${char.uuid.slice(0, 8)}`, 'ok');
+                written = true;
+            } catch (e) {
+                log(`❌ Échec sur ${char.uuid.slice(0, 8)} : ${e.message}`, 'err');
             }
         }
+
         if (written) successCount++;
     }
 
     if (successCount > 0) {
-        log(`🎉 Code [${label}] transmis ! Testez la poignée sur béquille (> 30 mph en Sport).`, 'ok');
+        log(`🎉 Commande [${label}] transmise à la moto !`, 'ok');
     } else {
-        log(`❌ Échec de transmission.`, 'err');
+        log(`❌ GATT Operation Failed : Le contrôleur a rejeté l'écriture. Essayez de redémarrer la moto et de relancer le scan.`, 'err');
     }
 }
 
 btnConnect.addEventListener('click', connectBike);
 btnDisconnect.addEventListener('click', () => {
-    if (bleDevice && bleDevice.gatt.connected) {
-        bleDevice.gatt.disconnect();
-    }
+    if (bleDevice && bleDevice.gatt.connected) { bleDevice.gatt.disconnect(); }
 });
 btnUnlock.addEventListener('click', () => sendCode(XQI3.UNLOCK_CODE, 'DÉBRIDAGE'));
 btnLock.addEventListener('click', () => sendCode(XQI3.LOCK_CODE, 'BRIDAGE'));
