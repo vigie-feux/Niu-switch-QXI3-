@@ -98,13 +98,13 @@ async function scanAndConnect() {
         try {
             gattCharacteristic = await service.getCharacteristic(XQI3_CONFIG.CHAR_UUID);
         } catch (e) {
-            log('Recherche automatique de la première caractéristique d\'écriture...', 'warn');
+            log('Caractéristique exacte non trouvée, recherche automatique...', 'warn');
             const chars = await service.getCharacteristics();
             const writeChar = chars.find(c => c.properties.write || c.properties.writeWithoutResponse);
             if (writeChar) {
                 gattCharacteristic = writeChar;
             } else {
-                throw new Error('Aucune caractéristique inscriptible trouvée.');
+                throw new Error('Aucune caractéristique inscriptible trouvée dans ce service.');
             }
         }
 
@@ -118,6 +118,7 @@ async function scanAndConnect() {
     }
 }
 
+// Écriture robuste avec basculement automatique writeValue / writeValueWithoutResponse
 async function sendCommand(hexCode, label) {
     if (!gattCharacteristic) {
         log('Erreur : Aucune caractéristique active.', 'error');
@@ -128,15 +129,23 @@ async function sendCommand(hexCode, label) {
         const payload = hexToBytes(hexCode);
         log(`Envoi [${label}] (${payload.byteLength} octets) : 0x${hexCode}`, 'warn');
 
-        if (gattCharacteristic.writeValueWithResponse) {
-            await gattCharacteristic.writeValueWithResponse(payload);
-        } else {
+        // Essayer d'abord writeValueWithoutResponse si supporté, sinon writeValue (avec réponse)
+        if (gattCharacteristic.properties.writeWithoutResponse) {
+            await gattCharacteristic.writeValueWithoutResponse(payload);
+        } else if (gattCharacteristic.properties.write) {
             await gattCharacteristic.writeValue(payload);
+        } else {
+            // Forcer writeValue si les propriétés ne sont pas déclarées explicitement
+            try {
+                await gattCharacteristic.writeValueWithoutResponse(payload);
+            } catch (err) {
+                await gattCharacteristic.writeValue(payload);
+            }
         }
 
-        log(`Trame [${label}] transmise avec succès ! Vérifiez la vitesse sur la moto.`, 'success');
+        log(`🎉 Trame [${label}] transmise avec succès ! Vérifiez la vitesse sur la moto.`, 'success');
     } catch (error) {
-        log(`Erreur lors de l'envoi [${label}] : ${error.message}`, 'error');
+        log(`❌ Erreur d'envoi [${label}] : ${error.message}`, 'error');
     }
 }
 
