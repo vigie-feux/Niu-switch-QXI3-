@@ -1,26 +1,8 @@
-// Configuration BLE & Codes en dur pour NIU XQi3 (Spécifique NIU LINK C9F7)
+// Configuration BLE & Codes en dur pour NIU XQi3 (Mode Auto-GATT Universel)
 const XQI3_CONFIG = {
     DEVICE_PREFIX: 'NIU Link',
-    SERVICE_UUID: '8ec94e30-f315-4f60-9fb8-838830daea52',
-    CHAR_UUID: '8ec94e31-f315-4f60-9fb8-838830daea52',
     UNLOCK_HEX: '6784855922124433616292282354227987263531',
-    LOCK_HEX: '6784855922124433616292282354227987273531',
-    ALL_POSSIBLE_SERVICES: [
-        '8ec94e30-f315-4f60-9fb8-838830daea52',
-        '5ec94e30-f015-49b0-9fb8-83885b8aea32',
-        '6e400001-b5a3-f393-e0a9-e50e24dcca9e',
-        '0000ffe0-0000-1000-8000-00805f9b34fb',
-        '0000fff0-0000-1000-8000-00805f9b34fb',
-        '0000ae00-0000-1000-8000-00805f9b34fb',
-        '0000ae30-0000-1000-8000-00805f9b34fb',
-        '0000fe00-0000-1000-8000-00805f9b34fb',
-        '0000fee0-0000-1000-8000-00805f9b34fb',
-        '0000fee7-0000-1000-8000-00805f9b34fb',
-        '0000ff00-0000-1000-8000-00805f9b34fb',
-        '00001800-0000-1000-8000-00805f9b34fb',
-        '00001801-0000-1000-8000-00805f9b34fb',
-        '0000180a-0000-1000-8000-00805f9b34fb'
-    ]
+    LOCK_HEX: '6784855922124433616292282354227987273531'
 };
 
 let bluetoothDevice = null;
@@ -69,7 +51,7 @@ function updateUI(connected, name = 'Aucune moto détectée') {
         statusPill.className = 'status-pill disconnected';
         statusText.textContent = 'Déconnecté';
         deviceNameEl.textContent = name;
-        deviceUuidEl.textContent = `Service: ${XQI3_CONFIG.SERVICE_UUID}`;
+        deviceUuidEl.textContent = 'Prêt pour le scan';
         btnScan.disabled = false;
         btnDisconnect.disabled = true;
         btnUnlock.disabled = true;
@@ -86,16 +68,15 @@ async function scanAndConnect() {
 
     try {
         const usePrefixFilter = filterToggle.checked;
-        const options = {
-            optionalServices: XQI3_CONFIG.ALL_POSSIBLE_SERVICES
-        };
+        const options = {};
 
         if (usePrefixFilter) {
             options.filters = [{ namePrefix: XQI3_CONFIG.DEVICE_PREFIX }];
-            log(`Scan BLE lancé (Filtre : "${XQI3_CONFIG.DEVICE_PREFIX}*")...`, 'info');
+            options.optionalServices = ['8ec94e30-f315-4f60-9fb8-838830daea52', '5ec94e30-f015-49b0-9fb8-83885b8aea32', '6e400001-b5a3-f393-e0a9-e50e24dcca9e', '0000ffe0-0000-1000-8000-00805f9b34fb', 'fff0'];
+            log(`Scan BLE avec filtre : "${XQI3_CONFIG.DEVICE_PREFIX}*"`, 'info');
         } else {
             options.acceptAllDevices = true;
-            log('Scan BLE lancé (Tous les appareils)...', 'info');
+            log('Scan BLE global (Tous les appareils)...', 'info');
         }
 
         bluetoothDevice = await navigator.bluetooth.requestDevice(options);
@@ -107,45 +88,46 @@ async function scanAndConnect() {
         log('Connexion au serveur GATT...', 'info');
         const server = await bluetoothDevice.gatt.connect();
 
-        log('Inspection des services...', 'info');
+        log('Récupération de tous les services de la moto...', 'info');
         const services = await server.getPrimaryServices();
+        log(`${services.length} service(s) trouvé(s).`, 'info');
 
-        let targetService = null;
-        for (const s of services) {
-            if (s.uuid.toLowerCase() === XQI3_CONFIG.SERVICE_UUID.toLowerCase()) {
-                targetService = s;
-                break;
+        let foundChar = null;
+
+        for (const service of services) {
+            if (service.uuid.startsWith('00001800') || service.uuid.startsWith('00001801')) continue;
+            
+            log(`Examen du service : ${service.uuid}`, 'info');
+            try {
+                const chars = await service.getCharacteristics();
+                for (const c of chars) {
+                    log(` - Caractéristique : ${c.uuid}`, 'info');
+                    if (c.properties.write || c.properties.writeWithoutResponse || c.properties.writeWithoutResponse === false) {
+                        foundChar = c;
+                        break;
+                    }
+                }
+            } catch (err) {
+                log(`Impossible de lire les caractéristiques de ${service.uuid}`, 'warn');
             }
+            if (foundChar) break;
         }
 
-        if (!targetService) {
-            targetService = services.find(s => !s.uuid.startsWith('00001800') && !s.uuid.startsWith('00001801')) || services[0];
-            log(`Service cible de repli : ${targetService.uuid}`, 'warn');
-        } else {
-            log(`Service cible trouvé : ${targetService.uuid}`, 'success');
+        if (!foundChar) {
+            throw new Error('Aucune caractéristique d\'écriture n\'a été trouvée sur cet appareil.');
         }
 
-        log('Recherche de la caractéristique d\'écriture...', 'info');
-        const chars = await targetService.getCharacteristics();
-        
-        gattCharacteristic = chars.find(c => c.uuid.toLowerCase() === XQI3_CONFIG.CHAR_UUID.toLowerCase()) ||
-                             chars.find(c => c.properties.write || c.properties.writeWithoutResponse);
-
-        if (!gattCharacteristic) {
-            throw new Error('Aucune caractéristique inscriptible trouvée.');
-        }
-
-        deviceUuidEl.textContent = `Caractéristique : ${gattCharacteristic.uuid}`;
+        gattCharacteristic = foundChar;
+        deviceUuidEl.textContent = `Canal actif : ${gattCharacteristic.uuid}`;
         updateUI(true, devName);
-        log('Connecté et prêt !', 'success');
+        log('🎉 Connecté et prêt à envoyer les codes !', 'success');
 
     } catch (error) {
-        log(`❌ Échec de connexion : ${error.message}`, 'error');
+        log(`❌ Échec : ${error.message}`, 'error');
         updateUI(false);
     }
 }
 
-// Envoi ultra-robuste contournant "GATT Operation Failed"
 async function sendCommand(hexCode, label) {
     if (!gattCharacteristic) {
         log('Erreur : Aucune caractéristique active.', 'error');
@@ -159,7 +141,6 @@ async function sendCommand(hexCode, label) {
         const CHUNK_SIZE = 20;
         for (let i = 0; i < payload.length; i += CHUNK_SIZE) {
             const chunk = payload.slice(i, i + CHUNK_SIZE);
-            
             try {
                 await gattCharacteristic.writeValue(chunk);
             } catch (err1) {
@@ -172,8 +153,7 @@ async function sendCommand(hexCode, label) {
 
         log(`🎉 Trame [${label}] transmise avec succès ! Vérifiez la vitesse sur la moto.`, 'success');
     } catch (error) {
-        log(`❌ GATT Erreur [${label}] : ${error.message}`, 'error');
-        log(`💡 Conseil : Déconnectez et reconnectez la moto si le contrôleur s'est mis en sécurité.`, 'warn');
+        log(`❌ Erreur d'envoi [${label}] : ${error.message}`, 'error');
     }
 }
 
