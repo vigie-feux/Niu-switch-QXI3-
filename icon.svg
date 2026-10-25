@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="115" fill="#0f172a"/>
+  <rect x="36" y="36" width="440" height="440" rx="90" fill="none" stroke="#ef4444" stroke-width="16"/>
+  <text x="50%" y="46%" dominant-baseline="middle" text-anchor="middle" fill="#f8fafc" font-family="Arial, sans-serif" font-weight="900" font-size="130">XQi3</text>
+  <text x="50%" y="70%" dominant-baseline="middle" text-anchor="middle" fill="#3b82f6" font-family="Arial, sans-serif" font-weight="700" font-size="52">BLE CONNECT</text>
+</svg>

@@ -1,0 +1,333 @@
+:root {
+    --bg-dark: #090d16;
+    --card-bg: #131c2e;
+    --card-border: #1e293b;
+    --text-main: #f8fafc;
+    --text-muted: #94a3b8;
+    --primary: #3b82f6;
+    --primary-hover: #2563eb;
+    --unlock-color: #10b981;
+    --unlock-bg: rgba(16, 185, 129, 0.12);
+    --lock-color: #f59e0b;
+    --lock-bg: rgba(245, 158, 11, 0.12);
+    --danger: #ef4444;
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    -webkit-tap-highlight-color: transparent;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background-color: var(--bg-dark);
+    color: var(--text-main);
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    padding: 16px;
+}
+
+.app-container {
+    width: 100%;
+    max-width: 460px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.app-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 4px;
+}
+
+.logo-group {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.logo-badge {
+    background: linear-gradient(135deg, #ef4444, #b91c1c);
+    color: white;
+    font-weight: 800;
+    font-size: 0.95rem;
+    padding: 10px 12px;
+    border-radius: 12px;
+    letter-spacing: 0.5px;
+    box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+}
+
+h1 {
+    font-size: 1.25rem;
+    font-weight: 700;
+}
+
+.subtitle {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+}
+
+.status-pill {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border-radius: 999px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    background: #1e293b;
+}
+
+.status-pill .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+}
+
+.status-pill.disconnected {
+    color: #cbd5e1;
+}
+.status-pill.disconnected .dot {
+    background-color: var(--danger);
+}
+
+.status-pill.connected {
+    background: rgba(16, 185, 129, 0.15);
+    color: #34d399;
+}
+.status-pill.connected .dot {
+    background-color: var(--unlock-color);
+    box-shadow: 0 0 8px var(--unlock-color);
+}
+
+.card {
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: 16px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.card-header h2 {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: #e2e8f0;
+}
+
+.toggle-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    cursor: pointer;
+}
+
+.badge-info {
+    font-size: 0.72rem;
+    background: #1e293b;
+    color: #94a3b8;
+    padding: 3px 8px;
+    border-radius: 6px;
+    font-family: monospace;
+}
+
+.device-info {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: rgba(15, 23, 42, 0.6);
+    padding: 12px;
+    border-radius: 12px;
+    border: 1px solid #1e293b;
+}
+
+.device-icon {
+    font-size: 1.6rem;
+}
+
+.device-name {
+    font-weight: 600;
+    font-size: 0.95rem;
+}
+
+.device-meta {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    font-family: monospace;
+    margin-top: 2px;
+    word-break: break-all;
+}
+
+.btn-row {
+    display: flex;
+    gap: 10px;
+}
+
+.btn {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 12px 16px;
+    border-radius: 12px;
+    font-weight: 600;
+    font-size: 0.9rem;
+    border: none;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.btn-primary {
+    background: var(--primary);
+    color: white;
+}
+.btn-primary:not(:disabled):active {
+    background: var(--primary-hover);
+    transform: scale(0.98);
+}
+
+.btn-secondary {
+    flex: 0.45;
+    background: #1e293b;
+    color: #cbd5e1;
+}
+
+.action-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.action-btn {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    width: 100%;
+    padding: 16px;
+    border-radius: 14px;
+    border: 1px solid transparent;
+    text-align: left;
+    cursor: pointer;
+    transition: all 0.18s ease;
+}
+
+.action-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.unlock-btn {
+    background: var(--unlock-bg);
+    border-color: rgba(16, 185, 129, 0.35);
+    color: var(--text-main);
+}
+.unlock-btn:not(:disabled):active {
+    transform: scale(0.98);
+    background: rgba(16, 185, 129, 0.22);
+}
+
+.lock-btn {
+    background: var(--lock-bg);
+    border-color: rgba(245, 158, 11, 0.35);
+    color: var(--text-main);
+}
+.lock-btn:not(:disabled):active {
+    transform: scale(0.98);
+    background: rgba(245, 158, 11, 0.22);
+}
+
+.action-icon {
+    font-size: 1.8rem;
+}
+
+.action-content {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.action-title {
+    font-weight: 700;
+    font-size: 1rem;
+}
+
+.unlock-btn .action-title {
+    color: #34d399;
+}
+
+.lock-btn .action-title {
+    color: #fbbf24;
+}
+
+.action-desc {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+
+.hex-preview {
+    font-size: 0.7rem;
+    color: #64748b;
+    margin-top: 2px;
+}
+
+.log-console {
+    background: #060911;
+    border: 1px solid #1e293b;
+    border-radius: 10px;
+    padding: 10px;
+    height: 150px;
+    overflow-y: auto;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 0.75rem;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.log-entry {
+    line-height: 1.4;
+    word-break: break-all;
+}
+.log-time {
+    color: #64748b;
+    margin-right: 6px;
+}
+.log-info { color: #cbd5e1; }
+.log-success { color: #34d399; }
+.log-warn { color: #fbbf24; }
+.log-error { color: #f87171; }
+
+.btn-text {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    cursor: pointer;
+}
+
+.app-footer {
+    text-align: center;
+    font-size: 0.75rem;
+    color: #64748b;
+    padding: 8px 0;
+}
